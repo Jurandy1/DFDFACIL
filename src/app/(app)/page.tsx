@@ -77,33 +77,38 @@ export default function ListaPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `lista-demanda-${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `DFD_Demanda_CATMAT_Gov_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
   return (
-    <main className="container">
-      <div className="page-hd">
+    <main className="gov-main">
+      <div className="demand-banner">
         <div>
-          <h1>Minha lista</h1>
-          <p>Rascunho da sua demanda — tudo é salvo automaticamente.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', marginBottom: 4 }}>
+            <h2>{demanda?.titulo?.trim() || 'Minha Lista DFD'}</h2>
+            <span className="status-draft">
+              <span className="dot" />
+              Em elaboração (rascunho)
+            </span>
+          </div>
+          <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
+            Documento de Formalização da Demanda — exportação CSV no padrão Compras.gov.br
+          </p>
         </div>
-        <div className="actions">
-          <span className="chip accent"><span className="dot" />{status}</span>
-          <Link href="/pesquisa" className="btn primary">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            Adicionar item
-          </Link>
-        </div>
+        <Link href="/pesquisa" className="btn primary">
+          Buscar itens no CATMAT
+        </Link>
+      </div>
+
+      <div className="status-row">
+        <span className="chip accent"><span className="dot" />{status}</span>
       </div>
 
       <div className="summary-strip">
         <SummaryCard
-          label="Itens"
+          label="Total de itens na lista"
           value={itens.length.toString()}
           icon={
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -114,7 +119,7 @@ export default function ListaPage() {
           }
         />
         <SummaryCard
-          label="Com preço"
+          label="Itens com preço definido"
           value={`${comPreco} / ${itens.length || 0}`}
           icon={
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -123,7 +128,7 @@ export default function ListaPage() {
           }
         />
         <SummaryCard
-          label="Valor total"
+          label="Valor estimado total"
           value={formatBRL(total)}
           icon={
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -138,8 +143,8 @@ export default function ListaPage() {
         <div className="panel">
           <div className="panel-hd">
             <div className="title">
-              <strong>Cabeçalho da demanda</strong>
-              <small>Identifique este rascunho — usado no CSV exportado.</small>
+              <strong>Identificação do rascunho do DFD</strong>
+              <small>Campos usados na exportação CSV (padrão Gov.br)</small>
             </div>
           </div>
           <div className="panel-bd">
@@ -169,8 +174,8 @@ export default function ListaPage() {
         <div className="panel">
           <div className="panel-hd">
             <div className="title">
-              <strong>Itens</strong>
-              <small>{itens.length} {itens.length === 1 ? 'item' : 'itens'} na lista</small>
+              <strong>Itens da minha lista</strong>
+              <small>{itens.length} {itens.length === 1 ? 'item' : 'itens'} · CSV: UASG; CodigoCATMAT; DescricaoItem…</small>
             </div>
             <div className="row">
               <button className="btn" onClick={copyTable} disabled={!itens.length}>
@@ -181,12 +186,7 @@ export default function ListaPage() {
                 Copiar
               </button>
               <button className="btn primary" onClick={downloadCsv} disabled={!itens.length}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                Exportar CSV
+                Exportar CSV Gov
               </button>
             </div>
           </div>
@@ -196,17 +196,18 @@ export default function ListaPage() {
               <thead>
                 <tr>
                   <th style={{ width: 60 }}>#</th>
-                  <th>Descrição</th>
+                  <th>Item &amp; especificação CATMAT</th>
+                  <th style={{ width: 90 }}>Unidade</th>
                   <th style={{ width: 100 }}>Qtd</th>
-                  <th style={{ width: 130 }}>R$ Unid.</th>
-                  <th style={{ width: 130 }}>Total</th>
+                  <th style={{ width: 130 }}>R$ un. ref.</th>
+                  <th style={{ width: 130 }}>Valor total</th>
                   <th style={{ width: 50 }} aria-label="Ações" />
                 </tr>
               </thead>
               <tbody>
                 {loading && !itens.length && (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={7}>
                       <div className="stack-sm" style={{ padding: '0.75rem' }}>
                         <div className="skel" />
                         <div className="skel" />
@@ -217,7 +218,7 @@ export default function ListaPage() {
                 )}
                 {!loading && !itens.length && (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={7}>
                       <div className="empty">
                         <div className="empty-ico">
                           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -236,11 +237,14 @@ export default function ListaPage() {
                     <td>
                       <div style={{ lineHeight: 1.4, fontWeight: 500 }}>{it.descricao}</div>
                       <div style={{ marginTop: 6, display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                        <span className="chip">{it.unidade || 'unidade'}</span>
+                        <span className="chip mono">CATMAT {it.codigo_item}</span>
                         <span className={`chip ${it.preco_fonte === 'manual' ? 'warn' : it.preco_fonte ? 'ok' : ''}`}>
                           {precoFonteBadge(it.preco_fonte)}
                         </span>
                       </div>
+                    </td>
+                    <td>
+                      <span className="chip">{it.unidade || 'unidade'}</span>
                     </td>
                     <td>
                       <input
@@ -311,7 +315,7 @@ export default function ListaPage() {
             <div className="panel-ft">
               <span className="chip">{itens.length} {itens.length === 1 ? 'item' : 'itens'}</span>
               <div className="row">
-                <span className="muted" style={{ fontSize: '0.85rem' }}>Total</span>
+                <span className="muted" style={{ fontSize: '0.85rem' }}>Valor total estimado</span>
                 <strong className="mono" style={{ fontSize: '1.15rem' }}>{formatBRL(total)}</strong>
               </div>
             </div>

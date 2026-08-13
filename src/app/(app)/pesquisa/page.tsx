@@ -8,7 +8,9 @@ import {
   precoFonteBadge,
   type ItemHit,
   type PdmHit,
+  type RecentPrecoRow,
 } from '@/lib/types'
+import { catmatAttributeTags } from '@/lib/catmat-parse'
 
 type PreferredPrice = {
   mediana: number
@@ -18,6 +20,11 @@ type PreferredPrice = {
   maximo: number
   n: number
   fonte: string
+}
+
+type ItemEnrichment = {
+  unidadeFornecimento: { sigla?: string; nome?: string } | null
+  naturezaDespesa: { codigo?: string; nome?: string | null } | null
 }
 
 type FreeItem = ItemHit & { codigo_pdm: number }
@@ -41,6 +48,8 @@ export default function PesquisaPage() {
   const [preco, setPreco] = useState<number | null>(null)
   const [precoFonte, setPrecoFonte] = useState<string | null>(null)
   const [preferred, setPreferred] = useState<PreferredPrice | null>(null)
+  const [recentPrecos, setRecentPrecos] = useState<RecentPrecoRow[]>([])
+  const [enrichment, setEnrichment] = useState<ItemEnrichment | null>(null)
   const [priceLoading, setPriceLoading] = useState(false)
   const [searching, setSearching] = useState(false)
   const [autoOpenedFor, setAutoOpenedFor] = useState('')
@@ -176,14 +185,20 @@ export default function PesquisaPage() {
     setItemSel(it)
     setQtd(1)
     setPreferred(null)
+    setRecentPrecos([])
+    setEnrichment(null)
     setPreco(null)
     setPrecoFonte(null)
     setPriceLoading(true)
     setStatus('Buscando preços…')
     try {
+      const codigoPdm = it.codigo_pdm ?? pdmSel?.codigo_pdm
+      const qs = new URLSearchParams({ codigoItem: String(it.codigo_item) })
+      if (codigoPdm) qs.set('codigoPdm', String(codigoPdm))
+
       const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), 25000)
-      const res = await fetch(`/api/precos?codigoItem=${it.codigo_item}`, {
+      const timer = setTimeout(() => ctrl.abort(), 45000)
+      const res = await fetch(`/api/precos?${qs.toString()}`, {
         signal: ctrl.signal,
       })
       clearTimeout(timer)
@@ -191,6 +206,8 @@ export default function PesquisaPage() {
       if (!res.ok) throw new Error(json.error || 'Falha nos preços')
       const pref = json.preferred as PreferredPrice | null
       setPreferred(pref)
+      setRecentPrecos((json.recent || []) as RecentPrecoRow[])
+      setEnrichment((json.meta?.enrichment as ItemEnrichment) ?? null)
       if (pref) {
         setPreco(Number(pref.mediana))
         setPrecoFonte(pref.fonte)
@@ -253,64 +270,79 @@ export default function PesquisaPage() {
   }
 
   const showResults = termo.trim().length >= 2
+  const resultCount = itemSel ? 1 : pdmSel ? filteredItemHits.length : freeItems.length + pdms.length
+
+  function quickSearch(q: string) {
+    setTermo(q)
+    setPdmSel(null)
+    setItemHits([])
+    setItemSel(null)
+    setFacetas([])
+    setFacetActive({})
+    setAutoOpenedFor('')
+  }
 
   return (
-    <main className="container container-wide">
-      <div className="page-hd">
-        <div>
-          <h1>Pesquisa avançada</h1>
-          <p>Busque na base CATMAT, escolha o item e consulte preço de referência.</p>
+    <main className="gov-main">
+      <div className="hero-banner">
+        <div className="hero-top">
+          <div>
+            <h2>Catálogo de Material (CATMAT / PDM)</h2>
+            <p>Consulte itens homologados pelo Governo Federal para instrução do seu DFD.</p>
+          </div>
+          <span className="hero-badge">dadosabertos.compras.gov.br</span>
         </div>
-        <div className="actions">
-          <span className="chip accent"><span className="dot" />{status}</span>
-          <Link href="/" className="btn">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-            Ver lista ({itens.length})
-          </Link>
+        <div className="hero-search">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ marginLeft: 8, flexShrink: 0 }} aria-hidden>
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+          <input
+            placeholder="Digite o nome do item, código CATMAT ou PDM (Ex: ar condicionado, 621109, cadeira…)"
+            value={termo}
+            onChange={(e) => {
+              setTermo(e.target.value)
+              setPdmSel(null)
+              setItemHits([])
+              setItemSel(null)
+              setFacetas([])
+              setFacetActive({})
+              setAutoOpenedFor('')
+            }}
+            autoFocus
+          />
+          <button
+            type="button"
+            className="btn primary"
+            style={{ borderRadius: '0.375rem', padding: '0.55rem 1.1rem' }}
+            disabled={searching}
+          >
+            {searching ? 'Buscando…' : 'Buscar'}
+          </button>
+        </div>
+        <div className="hero-quick">
+          <span>Consultas frequentes:</span>
+          {['ar condicionado', 'cadeira escritorio', 'notebook', 'papel a4'].map((q) => (
+            <button key={q} type="button" onClick={() => quickSearch(q)}>
+              {q.replace(/\b\w/g, (c) => c.toUpperCase())}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="panel" style={{ marginBottom: '1rem' }}>
-        <div className="panel-bd">
-          <div className="search-shell">
-            <input
-              className="search-box"
-              placeholder='Ex.: ar condicionado · ou mais específico: ar condicionado split teto 30000'
-              value={termo}
-              onChange={(e) => {
-                setTermo(e.target.value)
-                setPdmSel(null)
-                setItemHits([])
-                setItemSel(null)
-                setFacetas([])
-                setFacetActive({})
-                setAutoOpenedFor('')
-              }}
-              autoFocus
-            />
-          </div>
-          <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            {searching && <span className="chip"><span className="dot" style={{ background: 'var(--accent)' }} /> buscando…</span>}
-            {!searching && showResults && (
-              <>
-                <span className="chip">{pdms.length} tipos (PDMs)</span>
-                <span className="chip">{freeItems.length} itens diretos</span>
-              </>
-            )}
-            {!showResults && (
-              <span className="muted" style={{ fontSize: '0.82rem' }}>
-                Dica: digite pelo menos 2 letras para começar.
-              </span>
-            )}
-          </div>
-        </div>
+      <div className="status-row">
+        <span className="chip accent"><span className="dot" />{status}</span>
+        {searching && <span className="chip">Consultando base local…</span>}
+        {!searching && showResults && (
+          <>
+            <span className="chip">{pdms.length} PDMs</span>
+            <span className="chip">{freeItems.length} itens diretos</span>
+            {pdmSel && <span className="chip filter-on">{pdmSel.nome_pdm}</span>}
+          </>
+        )}
+        <Link href="/" className="btn" style={{ marginLeft: 'auto' }}>
+          Ver lista ({itens.length})
+        </Link>
       </div>
 
       {!showResults ? (
@@ -318,193 +350,172 @@ export default function PesquisaPage() {
           <div className="panel-bd">
             <div className="empty">
               <div className="empty-ico">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                   <circle cx="11" cy="11" r="7" />
                   <path d="m21 21-4.35-4.35" />
                 </svg>
               </div>
               <div className="empty-title">Comece a pesquisar</div>
-              <div>Encontre PDMs (tipos de material) ou pule direto ao item específico.</div>
+              <div>Digite pelo menos 2 letras ou um código CATMAT para buscar na base local (~248k itens).</div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="search-grid">
-          <div className="stack">
+        <div className="gov-grid">
+          <aside className="gov-sidebar">
             <div className="panel">
               <div className="panel-hd">
                 <div className="title">
-                  <strong>Tipos / PDMs</strong>
-                  <small>Escolha uma categoria para ver todos os itens</small>
+                  <strong>Filtros aplicados</strong>
+                  <small>PDMs e atributos extraídos das descrições</small>
                 </div>
-                <span className="chip">{pdms.length}</span>
+                {!!Object.keys(facetActive).length && (
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}
+                    onClick={() => {
+                      setFacetActive({})
+                      setItemFilter('')
+                    }}
+                  >
+                    Limpar
+                  </button>
+                )}
               </div>
-              <div className="panel-bd">
-                <div className="scroll-area option-list" style={{ maxHeight: 260 }}>
+              <div className="panel-bd stack-sm">
+                {Object.keys(facetActive).length ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {Object.entries(facetActive).map(([k, v]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        className="chip accent tag"
+                        onClick={() => toggleFacet(k, v)}
+                      >
+                        {k}: {v} ×
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="muted" style={{ fontSize: '0.78rem' }}>Nenhum filtro selecionado</span>
+                )}
+
+                <div className="filter-section-title">Grupos e PDMs</div>
+                <div className="scroll-area custom-scrollbar option-list" style={{ maxHeight: 220 }}>
                   {pdms.map((p) => (
                     <button
                       key={p.codigo_pdm}
+                      type="button"
                       className={`option ${pdmSel?.codigo_pdm === p.codigo_pdm ? 'active' : ''}`}
                       onClick={() => openPdm(p)}
                     >
                       <div className="title-line">
                         <span className="title">{p.nome_pdm}</span>
-                        <span className="chip">{p.qtd_itens} itens</span>
+                        <span className="chip">{p.qtd_itens}</span>
                       </div>
                       <span className="meta">PDM {p.codigo_pdm}</span>
                     </button>
                   ))}
                   {!pdms.length && !searching && (
-                    <div className="empty">
-                      <div>Nenhum tipo encontrado para esse termo.</div>
-                    </div>
+                    <div className="muted" style={{ fontSize: '0.78rem', padding: '0.5rem' }}>Nenhum PDM para este termo.</div>
                   )}
                 </div>
+
+                {!!facetas.length && (
+                  <>
+                    <div className="filter-section-title" style={{ marginTop: '0.5rem' }}>
+                      Atributos especificados
+                      <span className="muted" style={{ fontWeight: 400, textTransform: 'none', marginLeft: 6 }}>· extração automática</span>
+                    </div>
+                    {(['TIPO', 'MODELO', 'CAPACIDADE', 'TENSÃO', 'CARACTERÍSTICAS'] as const).map((chave) => {
+                      const opts = facetas.filter((f) => f.chave === chave)
+                      if (!opts.length) return null
+                      return (
+                        <div key={chave}>
+                          <div className="muted" style={{ fontSize: '0.72rem', fontWeight: 600, marginBottom: 6 }}>{chave}</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {opts.map((f) => {
+                              const on = facetActive[chave] === f.valor
+                              return (
+                                <button
+                                  key={`${chave}-${f.valor}`}
+                                  type="button"
+                                  className={`chip tag ${on ? 'filter-on' : ''}`}
+                                  title={`${f.qtd} itens`}
+                                  onClick={() => toggleFacet(chave, f.valor)}
+                                >
+                                  {f.valor}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
               </div>
             </div>
+          </aside>
 
+          <section className="gov-results">
             <div className="panel">
               <div className="panel-hd">
                 <div className="title">
-                  <strong>Itens sugeridos</strong>
-                  <small>Amostra do tipo mais relevante (refine com filtros à direita)</small>
+                  <strong>Resultados do catálogo</strong>
+                  <small>Selecione itens oficiais para composição de custos no DFD</small>
                 </div>
-                <span className="chip">{freeItems.length}</span>
-              </div>
-              <div className="panel-bd">
-                <div className="scroll-area option-list" style={{ maxHeight: 240 }}>
-                  {freeItems.map((it) => (
-                    <button
-                      key={it.codigo_item}
-                      className={`option ${itemSel?.codigo_item === it.codigo_item ? 'active' : ''}`}
-                      onClick={() => openItem(it)}
-                    >
-                      <span className="title" style={{ fontWeight: 500 }}>{it.descricao}</span>
-                      <span className="meta">{it.nome_pdm} · item {it.codigo_item}</span>
-                    </button>
-                  ))}
-                  {!freeItems.length && !searching && (
-                    <div className="empty">
-                      <div>Nenhum atalho — abra um tipo e use Tipo / Modelo / Capacidade.</div>
-                    </div>
-                  )}
-                </div>
+                <span className="chip">{resultCount} itens</span>
               </div>
             </div>
-          </div>
 
-          <div className="stack" style={{ position: 'sticky', top: 84 }}>
-            {pdmSel && !itemSel && (
+            {itemSel ? (
               <div className="panel">
                 <div className="panel-hd">
                   <div className="title">
-                    <strong>{pdmSel.nome_pdm}</strong>
-                    <small>{filteredItemHits.length} opções · unidade sugerida: {unidadeSug}</small>
-                  </div>
-                </div>
-                <div className="panel-bd">
-                  {!!facetas.length && (
-                    <div className="facet-block" style={{ marginBottom: '0.85rem' }}>
-                      {(['TIPO', 'MODELO', 'CAPACIDADE', 'TENSÃO', 'CARACTERÍSTICAS'] as const).map((chave) => {
-                        const opts = facetas.filter((f) => f.chave === chave)
-                        if (!opts.length) return null
-                        return (
-                          <div key={chave} style={{ marginBottom: '0.55rem' }}>
-                            <div className="muted" style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.04em', marginBottom: 6 }}>
-                              {chave}
-                            </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                              {opts.map((f) => {
-                                const on = facetActive[chave] === f.valor
-                                return (
-                                  <button
-                                    key={`${chave}-${f.valor}`}
-                                    type="button"
-                                    className={`chip ${on ? 'accent' : ''}`}
-                                    style={{ cursor: 'pointer', border: 'none', maxWidth: 220 }}
-                                    title={`${f.qtd} itens`}
-                                    onClick={() => toggleFacet(chave, f.valor)}
-                                  >
-                                    {f.valor}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )
-                      })}
-                      {!!Object.keys(facetActive).length && (
-                        <button
-                          type="button"
-                          className="btn ghost"
-                          style={{ marginTop: 4, fontSize: '0.8rem' }}
-                          onClick={() => {
-                            setFacetActive({})
-                            setItemFilter('')
-                          }}
-                        >
-                          Limpar filtros
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <div className="search-shell">
-                    <input
-                      className="search-box"
-                      style={{ padding: '0.75rem 1rem 0.75rem 2.75rem', fontSize: '0.9rem' }}
-                      placeholder="Ou digite: split teto 30000, inverter, 621109…"
-                      value={itemFilter}
-                      onChange={(e) => {
-                        setItemFilter(e.target.value)
-                        setFacetActive({})
-                      }}
-                    />
-                  </div>
-                  <div className="scroll-area option-list" style={{ maxHeight: 360, marginTop: '0.75rem' }}>
-                    {filteredItemHits.map((it) => (
-                      <button
-                        key={it.codigo_item}
-                        className="option"
-                        onClick={() => openItem(it)}
-                      >
-                        <span className="title" style={{ fontWeight: 500 }}>{it.descricao}</span>
-                      </button>
-                    ))}
-                    {!filteredItemHits.length && (
-                      <div className="empty">Nenhuma opção com esse filtro.</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {itemSel && (
-              <div className="panel">
-                <div className="panel-hd">
-                  <div className="title">
-                    <strong>Item selecionado</strong>
-                    <small>Ajuste quantidade e preço antes de adicionar</small>
+                    <strong>Item selecionado · {itemSel.codigo_item}</strong>
+                    <small>Ajuste quantidade e preço antes de adicionar à lista</small>
                   </div>
                   <button
+                    type="button"
                     className="btn ghost"
                     onClick={() => {
                       setItemSel(null)
                       setPreferred(null)
                       setPreco(null)
                     }}
-                    aria-label="Fechar"
-                    title="Voltar"
                   >
                     ← Voltar
                   </button>
                 </div>
                 <div className="panel-bd stack">
                   <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.5 }}>{itemSel.descricao}</p>
+                  <div className="item-card-tags">
+                    {catmatAttributeTags(itemSel.descricao).map((t) => (
+                      <span key={t} className="chip muted">{t}</span>
+                    ))}
+                  </div>
 
                   {priceLoading && (
                     <div className="stack-sm">
                       <div className="skel" />
                       <div className="skel" style={{ height: 20, width: '60%' }} />
+                      <span className="chip">Consultando preços Compras.gov.br…</span>
+                    </div>
+                  )}
+
+                  {!priceLoading && enrichment && (enrichment.unidadeFornecimento || enrichment.naturezaDespesa) && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      {enrichment.unidadeFornecimento?.nome && (
+                        <span className="chip">Unidade CATMAT: {enrichment.unidadeFornecimento.nome}</span>
+                      )}
+                      {enrichment.naturezaDespesa?.codigo && (
+                        <span className="chip">
+                          ND: {enrichment.naturezaDespesa.codigo}
+                          {enrichment.naturezaDespesa.nome ? ` · ${enrichment.naturezaDespesa.nome}` : ''}
+                        </span>
+                      )}
                     </div>
                   )}
 
@@ -512,7 +523,7 @@ export default function PesquisaPage() {
                     <div className="price-card">
                       <div className="headline">
                         <span className="val mono">{formatBRL(preferred.mediana)}</span>
-                        <span className="lbl">mediana ({preferred.n} registros)</span>
+                        <span className="lbl">mediana ({preferred.n} registros · 12 meses)</span>
                       </div>
                       <div className="price-stats">
                         <Stat k="p25" v={formatBRL(preferred.p25)} />
@@ -528,9 +539,41 @@ export default function PesquisaPage() {
 
                   {!priceLoading && !preferred && (
                     <div className="empty" style={{ padding: '1rem', textAlign: 'left', alignItems: 'flex-start' }}>
-                      <div>
-                        <div className="empty-title" style={{ marginBottom: 4 }}>Sem referência automática</div>
-                        <div>Informe o R$ unitário manualmente abaixo.</div>
+                      <div className="empty-title" style={{ marginBottom: 4 }}>Sem referência automática</div>
+                      <div>Informe o R$ unitário manualmente abaixo.</div>
+                    </div>
+                  )}
+
+                  {!priceLoading && recentPrecos.length > 0 && (
+                    <div>
+                      <div className="muted" style={{ fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+                        Compras recentes (12 meses)
+                      </div>
+                      <div className="table-wrap custom-scrollbar" style={{ maxHeight: 220 }}>
+                        <table className="lista">
+                          <thead>
+                            <tr>
+                              <th>Data</th>
+                              <th>Fonte</th>
+                              <th>Órgão / UASG</th>
+                              <th>UF</th>
+                              <th>Qtd</th>
+                              <th>R$ un.</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {recentPrecos.slice(0, 15).map((r, i) => (
+                              <tr key={`${r.fonte}-${r.data_resultado}-${i}`}>
+                                <td className="mono">{r.data_resultado || '—'}</td>
+                                <td>{r.fonte === 'siasg' ? 'SIASG' : 'PNCP'}</td>
+                                <td>{r.orgao_nome || '—'}</td>
+                                <td>{r.uf || '—'}</td>
+                                <td className="mono">{r.quantidade ?? '—'}</td>
+                                <td className="mono">{formatBRL(Number(r.preco_unitario))}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   )}
@@ -538,13 +581,7 @@ export default function PesquisaPage() {
                   <div className="field-row">
                     <label className="field">
                       <span>Quantidade</span>
-                      <input
-                        className="mono"
-                        type="number"
-                        min={1}
-                        value={qtd}
-                        onChange={(e) => setQtd(Number(e.target.value))}
-                      />
+                      <input className="mono" type="number" min={1} value={qtd} onChange={(e) => setQtd(Number(e.target.value))} />
                     </label>
                     <label className="field">
                       <span>R$ unitário (editável)</span>
@@ -561,34 +598,77 @@ export default function PesquisaPage() {
                       />
                     </label>
                   </div>
-                  <button className="btn primary" onClick={addItem} style={{ width: '100%', justifyContent: 'center', padding: '0.7rem' }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <line x1="12" y1="5" x2="12" y2="19" />
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                    Adicionar à lista
+                  <button className="btn primary" onClick={addItem} style={{ width: '100%', justifyContent: 'center', padding: '0.7rem' }} type="button">
+                    Adicionar à Minha Lista DFD
                   </button>
                 </div>
               </div>
-            )}
-
-            {!pdmSel && !itemSel && (
-              <div className="panel">
-                <div className="panel-bd">
-                  <div className="empty">
-                    <div className="empty-ico">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <polyline points="9 11 12 14 22 4" />
-                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                      </svg>
-                    </div>
-                    <div className="empty-title">Escolha um resultado</div>
-                    <div>Selecione um tipo (PDM) ou um item direto ao lado.</div>
-                  </div>
+            ) : pdmSel ? (
+              <>
+                <div className="search-shell">
+                  <input
+                    className="search-box"
+                    placeholder="Refinar: split teto 30000, inverter, 621109…"
+                    value={itemFilter}
+                    onChange={(e) => {
+                      setItemFilter(e.target.value)
+                      setFacetActive({})
+                    }}
+                  />
                 </div>
+                <div className="scroll-area custom-scrollbar stack-sm" style={{ maxHeight: '70vh' }}>
+                  {filteredItemHits.map((it) => (
+                    <button
+                      key={it.codigo_item}
+                      type="button"
+                      className="item-card"
+                      onClick={() => openItem(it)}
+                    >
+                      <div className="item-card-code">CATMAT {it.codigo_item}</div>
+                      <div style={{ fontSize: '0.88rem', lineHeight: 1.45, marginTop: 4, fontWeight: 500 }}>{it.descricao}</div>
+                      <div className="item-card-tags">
+                        {catmatAttributeTags(it.descricao).map((t) => (
+                          <span key={t} className="chip muted">{t}</span>
+                        ))}
+                      </div>
+                    </button>
+                  ))}
+                  {!filteredItemHits.length && (
+                    <div className="empty">Nenhuma opção com esse filtro.</div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="stack-sm">
+                {freeItems.map((it) => (
+                  <button
+                    key={it.codigo_item}
+                    type="button"
+                    className="item-card"
+                    onClick={() => openItem(it)}
+                  >
+                    <div className="item-card-code">CATMAT {it.codigo_item}</div>
+                    <div style={{ fontSize: '0.88rem', lineHeight: 1.45, marginTop: 4, fontWeight: 500 }}>{it.descricao}</div>
+                    <div className="item-card-tags">
+                      <span className="chip">{it.nome_pdm}</span>
+                      {catmatAttributeTags(it.descricao, 4).map((t) => (
+                        <span key={t} className="chip muted">{t}</span>
+                      ))}
+                    </div>
+                  </button>
+                ))}
+                {!freeItems.length && pdms.length > 0 && (
+                  <div className="empty">
+                    <div className="empty-title">Escolha um PDM</div>
+                    <div>Selecione um grupo à esquerda para ver todas as variações do item.</div>
+                  </div>
+                )}
+                {!freeItems.length && !pdms.length && !searching && (
+                  <div className="empty">Nenhum resultado para este termo.</div>
+                )}
               </div>
             )}
-          </div>
+          </section>
         </div>
       )}
     </main>

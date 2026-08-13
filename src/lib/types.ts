@@ -11,9 +11,19 @@ export type ItemHit = {
   descricao: string
   unidade: string
   nome_pdm: string
+  codigo_pdm?: number
   codigo_classe: number
   codigo_grupo: number
   score: number
+}
+
+export type RecentPrecoRow = {
+  fonte: string
+  preco_unitario: number
+  data_resultado: string | null
+  orgao_nome: string | null
+  uf: string | null
+  quantidade: number | null
 }
 
 export type PrecoStats = {
@@ -59,23 +69,23 @@ export function precoFonteBadge(fonte: string | null | undefined) {
   }
 }
 
-export function buildCsv(items: DemandaItem[]) {
-  const header = ['Item', 'Código', 'Descrição', 'Unidade', 'Quant.', 'R$ Unid.', 'R$ Total', 'Fonte preço']
-  const lines = items.map((it, idx) => {
+export function buildCsv(items: DemandaItem[], uasg = '') {
+  const header =
+    'UASG;CodigoCATMAT;DescricaoItem;Unidade;Quantidade;ValorUnitarioRef;ValorTotalEstimado'
+  const lines = items.map((it) => {
     const q = Number(it.quantidade || 0)
     const p = Number(it.preco_unitario || 0)
     const total = q * p
-    const desc = (it.descricao || '').replaceAll('"', '""')
+    const desc = `"${(it.descricao || '').replaceAll('"', '""')}"`
     return [
-      String(idx + 1),
+      uasg,
       String(it.codigo_item),
-      `"${desc}"`,
+      desc,
       it.unidade || 'unidade',
       String(q).replace('.', ','),
       p.toFixed(2).replace('.', ','),
       total.toFixed(2).replace('.', ','),
-      precoFonteBadge(it.preco_fonte),
     ].join(';')
   })
-  return [header.join(';'), ...lines].join('\n')
+  return [header, ...lines].join('\n')
 }

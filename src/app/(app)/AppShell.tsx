@@ -11,6 +11,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [email, setEmail] = useState<string | null>(null)
   const [count, setCount] = useState<number | null>(null)
+  const [apiOnline, setApiOnline] = useState<boolean | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -34,6 +35,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [supabase, pathname])
 
+  useEffect(() => {
+    let cancelled = false
+    fetch('https://dadosabertos.compras.gov.br/modulo-material/1_consultarGrupoMaterial?pagina=1&tamanhoPagina=10', {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+    })
+      .then((r) => {
+        if (!cancelled) setApiOnline(r.ok)
+      })
+      .catch(() => {
+        if (!cancelled) setApiOnline(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   async function logout() {
     await supabase.auth.signOut()
     router.push('/login')
@@ -45,42 +63,72 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <Link href="/" className="brand">
-          <span className="brand-mark">DF</span>
-          <span className="brand-text">
-            <strong>DFD Fácil</strong>
-            <span>CATMAT · preços · lista</span>
-          </span>
-        </Link>
+      <div className="gov-bar">
+        <div className="gov-bar-left">
+          <span className="brasil">BRASIL</span>
+          <span className="sep">|</span>
+          <span className="hide-sm">Ministério da Gestão e da Inovação em Serviços Públicos</span>
+          <span className="show-sm-only">MGI</span>
+        </div>
+        <div className="gov-bar-left">
+          <a
+            href="https://dadosabertos.compras.gov.br/swagger-ui/index.html"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            API Compras.gov.br
+          </a>
+        </div>
+      </div>
 
-        <nav className="nav" aria-label="Seções">
-          <Link href="/" className={isList ? 'active' : ''}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-            Minha lista
-            {count != null && count > 0 && <span className="nav-badge">{count}</span>}
+      <header className="app-header">
+        <div className="app-header-inner">
+          <Link href="/" className="brand">
+            <span className="brand-mark">DF</span>
+            <span className="brand-text">
+              <span className="brand-title-row">
+                <strong>DFD Fácil</strong>
+                <span className="badge-api">API Gov.br</span>
+              </span>
+              <span className="hide-sm">Documento de Formalização da Demanda com Integração CATMAT</span>
+            </span>
           </Link>
-          <Link href="/pesquisa" className={isSearch ? 'active' : ''}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <circle cx="11" cy="11" r="7" />
-              <path d="m21 21-4.35-4.35" />
-            </svg>
-            Pesquisa avançada
-          </Link>
-        </nav>
 
-        <div className="topbar-right">
-          {email && <span className="chip muted" title={email}>{email}</span>}
-          <button className="btn ghost" onClick={logout} aria-label="Sair">
-            Sair
-          </button>
+          <nav className="tab-nav" aria-label="Seções">
+            <Link href="/pesquisa" className={isSearch ? 'active' : ''}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.35-4.35" />
+              </svg>
+              <span className="hide-sm">Pesquisa Avançada</span>
+              <span className="show-sm-only">Pesquisa</span>
+            </Link>
+            <Link href="/" className={isList ? 'active' : ''}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                <rect x="9" y="3" width="6" height="4" rx="1" />
+              </svg>
+              <span className="hide-sm">Minha Lista DFD</span>
+              <span className="show-sm-only">Lista</span>
+              {count != null && count > 0 && <span className="nav-badge">{count}</span>}
+            </Link>
+          </nav>
+
+          <div className="header-right">
+            <div className={`api-status ${apiOnline === false ? 'offline' : ''}`}>
+              <span className="api-dot" />
+              <span>{apiOnline === false ? 'API Offline' : apiOnline ? 'API Online' : 'Verificando…'}</span>
+            </div>
+            {email && (
+              <div className="user-block hide-sm">
+                <div className="email">{email}</div>
+                <div className="sub">Base local + Compras.gov.br</div>
+              </div>
+            )}
+            <button className="btn ghost" onClick={logout} aria-label="Sair" type="button">
+              Sair
+            </button>
+          </div>
         </div>
       </header>
 
