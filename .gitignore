@@ -34,3 +34,4 @@ next-env.d.ts
 # sync logs
 scripts/.sync-cookies.json
 scripts/sync-progress.log
+.vercel
