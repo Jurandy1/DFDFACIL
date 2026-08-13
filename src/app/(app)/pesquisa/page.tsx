@@ -11,6 +11,12 @@ import {
   type RecentPrecoRow,
 } from '@/lib/types'
 import { catmatAttributeTags } from '@/lib/catmat-parse'
+import {
+  mergeFilters,
+  parseSearchIntent,
+  sanitizarQueryCATMAT,
+  type SearchIntent,
+} from '@/lib/sanitizer'
 
 type PreferredPrice = {
   mediana: number
@@ -60,11 +66,25 @@ export default function PesquisaPage() {
 
   const filteredItemHits = itemHits
 
+  function rpcFilters(intent: SearchIntent) {
+    return {
+      p_tem_forno: intent.tem_forno,
+      p_capacidade_btu: intent.capacidade_btu,
+      p_qtd_bocas: intent.qtd_bocas,
+    }
+  }
+
   function buildFilterFromFacets(next: Record<string, string>) {
-    return Object.values(next)
-      .map((v) => v.replace(/\./g, '').trim())
+    // Texto residual só para chaves ainda textuais (TIPO/MODELO/TENSÃO/CARACTERÍSTICAS)
+    return Object.entries(next)
+      .filter(([k]) => !['FORNO', 'CAPACIDADE', 'BOCAS'].includes(k))
+      .map(([, v]) => v.replace(/\./g, '').trim())
       .filter(Boolean)
       .join(' ')
+  }
+
+  function intentForPdmFilter(text: string, facets: Record<string, string>) {
+    return mergeFilters(parseSearchIntent(text || termo), facets)
   }
 
   useEffect(() => {
@@ -74,8 +94,10 @@ export default function PesquisaPage() {
       return
     }
 
-    const q = termo.trim()
-    const codePrefix = q.match(/^(\d{4,})\b/)?.[1] ?? null
+    const raw = termo.trim()
+    const codePrefix = raw.match(/^(\d{4,})\b/)?.[1] ?? null
+    const intent = parseSearchIntent(raw)
+    const q = intent.termoLimpo || sanitizarQueryCATMAT(raw)
 
     const timer = setTimeout(async () => {
       searchAbortRef.current?.abort()
@@ -85,7 +107,7 @@ export default function PesquisaPage() {
 
       try {
         if (codePrefix) {
-          const byCode = await supabase.rpc('buscar_itens_livre', { termo: q, lim: 8 })
+          const byCode = await supabase.rpc('buscar_itens_livre', { termo: raw, lim: 8 })
           if (ctrl.signal.aborted) return
           if (!byCode.error) {
             setFreeItems((byCode.data || []) as FreeItem[])
@@ -94,9 +116,10 @@ export default function PesquisaPage() {
           return
         }
 
+        const searchTerm = q.length >= 2 ? q : sanitizarQueryCATMAT(raw)
         const [pdmRes, itemRes] = await Promise.all([
-          supabase.rpc('buscar_pdms', { termo: q, lim: 18 }),
-          supabase.rpc('buscar_itens_livre', { termo: q, lim: 12 }),
+          supabase.rpc('buscar_pdms', { termo: searchTerm, lim: 18 }),
+          supabase.rpc('buscar_itens_livre', { termo: searchTerm, lim: 12 }),
         ])
         if (ctrl.signal.aborted) return
         if (pdmRes.error) setStatus(pdmRes.error.message)
@@ -126,25 +149,56 @@ export default function PesquisaPage() {
       (!second || top.score >= (second.score ?? 0) + 3 || top.qtd_itens >= (second.qtd_itens ?? 0) * 3)
     if (clearWinner) {
       setAutoOpenedFor(q)
-      void openPdm(top, { keepTermAsHint: q.split(/\s+/).length > 2 })
+      void openPdm(top, { keepTermAsHint: true })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- openPdm estável o suficiente; evita loop
   }, [pdms, searching, termo, autoOpenedFor])
 
-  // Filtro dentro do PDM no servidor
+  async function fetchItensNoPdm(
+    codigoPdm: number,
+    intent: SearchIntent,
+    lim = 100
+  ): Promise<ItemHit[]> {
+    const tryOnce = async (f: SearchIntent) => {
+      const { data } = await supabase.rpc('buscar_itens_no_pdm', {
+        pdm: codigoPdm,
+        termo: f.termoLimpo || null,
+        lim,
+        ...rpcFilters(f),
+      })
+      return (data || []) as ItemHit[]
+    }
+
+    let items = await tryOnce(intent)
+    // Relaxa filtros tipados se AND ficou vazio (ex.: 4 bocas + forno sem interseção)
+    if (!items.length && intent.qtd_bocas != null) {
+      items = await tryOnce({ ...intent, qtd_bocas: null })
+    }
+    if (!items.length && intent.capacidade_btu != null) {
+      items = await tryOnce({ ...intent, capacidade_btu: null, qtd_bocas: intent.qtd_bocas })
+    }
+    if (!items.length && (intent.tem_forno != null || intent.qtd_bocas != null || intent.capacidade_btu != null)) {
+      items = await tryOnce({
+        termoLimpo: intent.termoLimpo,
+        tem_forno: null,
+        capacidade_btu: null,
+        qtd_bocas: null,
+      })
+    }
+    return items
+  }
+
+  // Filtro dentro do PDM no servidor (texto + filtros estruturados)
   useEffect(() => {
     if (!pdmSel) return
-    const f = itemFilter.trim()
+    const intent = intentForPdmFilter(itemFilter, facetActive)
     const t = setTimeout(async () => {
-      const { data: items } = await supabase.rpc('buscar_itens_no_pdm', {
-        pdm: pdmSel.codigo_pdm,
-        termo: f || null,
-        lim: f ? 100 : 80,
-      })
-      setItemHits((items || []) as ItemHit[])
+      const items = await fetchItensNoPdm(pdmSel.codigo_pdm, intent, 100)
+      setItemHits(items)
     }, 180)
     return () => clearTimeout(t)
-  }, [itemFilter, pdmSel, supabase])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemFilter, facetActive, pdmSel, supabase, termo])
 
   async function openPdm(p: PdmHit, opts?: { keepTermAsHint?: boolean }) {
     setPdmSel(p)
@@ -154,29 +208,29 @@ export default function PesquisaPage() {
     setPrecoFonte(null)
     setFacetActive({})
     setFacetas([])
-    const hint =
-      opts?.keepTermAsHint && termo.trim().split(/\s+/).length > 2
-        ? termo
-            .trim()
-            .split(/\s+/)
-            .filter((w) => w.length >= 3 && !/^(ar|condicionado|aparelho)$/i.test(w))
-            .join(' ')
-        : ''
-    setItemFilter(hint)
+
+    const intent = opts?.keepTermAsHint ? parseSearchIntent(termo) : parseSearchIntent('')
+    const nextFacets: Record<string, string> = {}
+    if (intent.tem_forno === true) nextFacets.FORNO = 'COM FORNO'
+    if (intent.tem_forno === false) nextFacets.FORNO = 'SEM FORNO'
+    if (intent.capacidade_btu) nextFacets.CAPACIDADE = `${intent.capacidade_btu} BTU`
+    if (intent.qtd_bocas) nextFacets.BOCAS = `${intent.qtd_bocas} BOCAS`
+    setFacetActive(nextFacets)
+
+    const hintText = intent.termoLimpo
+    setItemFilter(hintText)
     setItemHits([])
     setStatus(`Abrindo ${p.nome_pdm}…`)
-    const [{ data: items }, { data: unid }] = await Promise.all([
-      supabase.rpc('buscar_itens_no_pdm', {
-        pdm: p.codigo_pdm,
-        termo: hint || null,
-        lim: hint ? 100 : 80,
-      }),
+
+    const merged = mergeFilters(intent, nextFacets)
+    const [items, { data: unid }] = await Promise.all([
+      fetchItensNoPdm(p.codigo_pdm, merged, 100),
       supabase.rpc('sugerir_unidade', { p_codigo_pdm: p.codigo_pdm }),
     ])
-    setItemHits((items || []) as ItemHit[])
+    setItemHits(items)
     setUnidadeSug((unid as string) || 'unidade')
     setStatus(
-      `${(items || []).length} opções em ${p.nome_pdm} — use Tipo / Modelo / Capacidade abaixo`
+      `${items.length} opções em ${p.nome_pdm} — use Tipo / Capacidade / Forno abaixo`
     )
 
     window.setTimeout(async () => {
@@ -193,7 +247,10 @@ export default function PesquisaPage() {
       const next = { ...prev }
       if (next[chave] === valor) delete next[chave]
       else next[chave] = valor
-      setItemFilter(buildFilterFromFacets(next))
+      // Mantém itemFilter só com atributos textuais; estruturados vão via facetActive
+      const textual = buildFilterFromFacets(next)
+      const base = parseSearchIntent(termo).termoLimpo
+      setItemFilter([base, textual].filter(Boolean).join(' ').trim())
       return next
     })
   }
@@ -480,7 +537,7 @@ export default function PesquisaPage() {
                       Atributos especificados
                       <span className="muted" style={{ fontWeight: 400, textTransform: 'none', marginLeft: 6 }}>· extração automática</span>
                     </div>
-                    {(['TIPO', 'MODELO', 'CAPACIDADE', 'TENSÃO', 'CARACTERÍSTICAS'] as const).map((chave) => {
+                    {(['TIPO', 'MODELO', 'CAPACIDADE', 'TENSÃO', 'FORNO', 'BOCAS', 'CARACTERÍSTICAS'] as const).map((chave) => {
                       const opts = facetas.filter((f) => f.chave === chave)
                       if (!opts.length) return null
                       return (

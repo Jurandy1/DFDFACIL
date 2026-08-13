@@ -6,6 +6,7 @@ require('dotenv').config({ path: '.env.local' })
 const { Client } = require('pg')
 const fs = require('fs')
 const path = require('path')
+const { extrairAtributos } = require('./lib/extrair-atributos.cjs')
 
 const BASE = 'https://dadosabertos.compras.gov.br/modulo-material'
 const PAGE_SIZE = 500
@@ -328,8 +329,9 @@ async function upsertItens(client, rows) {
   const params = []
   let i = 1
   for (const r of rows) {
+    const parsed = extrairAtributos(r.descricao_completa)
     values.push(
-      `($${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},now())`
+      `($${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},now(),$${i++}::jsonb,$${i++},$${i++},$${i++})`
     )
     params.push(
       r.codigo_item,
@@ -346,7 +348,11 @@ async function upsertItens(client, rows) {
       r.item_sustentavel,
       r.codigo_ncm,
       r.aplica_margem_preferencia,
-      r.data_atualizacao
+      r.data_atualizacao,
+      JSON.stringify(parsed.atributos),
+      parsed.tem_forno,
+      parsed.capacidade_btu,
+      parsed.qtd_bocas
     )
   }
   await client.query(
@@ -354,7 +360,8 @@ async function upsertItens(client, rows) {
       codigo_item,codigo_pdm,codigo_classe,codigo_grupo,
       nome_pdm,nome_classe,nome_grupo,nome_item,descricao_completa,
       unidade_medida,status_item,item_sustentavel,codigo_ncm,
-      aplica_margem_preferencia,data_atualizacao,synced_at
+      aplica_margem_preferencia,data_atualizacao,synced_at,
+      atributos,tem_forno,capacidade_btu,qtd_bocas
     ) values ${values.join(',')}
     on conflict (codigo_item) do update set
       codigo_pdm=excluded.codigo_pdm,
@@ -371,7 +378,11 @@ async function upsertItens(client, rows) {
       codigo_ncm=excluded.codigo_ncm,
       aplica_margem_preferencia=excluded.aplica_margem_preferencia,
       data_atualizacao=excluded.data_atualizacao,
-      synced_at=now()`,
+      synced_at=now(),
+      atributos=excluded.atributos,
+      tem_forno=excluded.tem_forno,
+      capacidade_btu=excluded.capacidade_btu,
+      qtd_bocas=excluded.qtd_bocas`,
     params
   )
 }
