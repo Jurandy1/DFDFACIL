@@ -195,7 +195,7 @@ async function fetchAndCachePrices(
   if (!uniqueRows.length) {
     meta.fetchError =
       siasgRes.error && pncpRes.error
-        ? 'API Compras.gov indisponível — preencha manualmente'
+        ? 'API de preços indisponível — preencha manualmente'
         : 'Sem preços nos últimos 12 meses — preencha manualmente'
   } else {
     const cacheError = await upsertBatches(supabase, uniqueRows)

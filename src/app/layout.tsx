@@ -9,8 +9,8 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'DFD Fácil — CATMAT & Gestão de Demandas (Gov.br)',
-  description: 'Busca CATMAT integrada à API Compras.gov.br, preços de referência e gestão de demanda para DFD',
+  title: 'DFD Fácil — CATMAT & Gestão de Demandas',
+  description: 'Busca CATMAT, preços de referência e gestão de demanda para DFD. Desenvolvido por Jurandy Santana.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

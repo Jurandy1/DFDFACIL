@@ -52,6 +52,7 @@ button, input, textarea, select { font: inherit; }
 .gov-bar-left { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
 .gov-bar span.show-sm-only { display: none; }
 .gov-bar .brasil { font-weight: 700; letter-spacing: 0.06em; color: var(--gov-yellow); }
+.gov-bar .dev-credit { font-weight: 500; letter-spacing: 0.02em; color: #e2e8f0; font-size: 0.82rem; }
 .gov-bar .sep { color: #94a3b8; }
 .gov-bar a { color: #cbd5e1; }
 .gov-bar a:hover { color: #fff; }

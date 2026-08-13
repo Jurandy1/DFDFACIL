@@ -58,19 +58,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="app-shell">
       <div className="gov-bar">
         <div className="gov-bar-left">
-          <span className="brasil">BRASIL</span>
-          <span className="sep">|</span>
-          <span className="hide-sm">Ministério da Gestão e da Inovação em Serviços Públicos</span>
-          <span className="show-sm-only">MGI</span>
-        </div>
-        <div className="gov-bar-left">
-          <a
-            href="https://dadosabertos.compras.gov.br/swagger-ui/index.html"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            API Compras.gov.br
-          </a>
+          <span className="dev-credit">Desenvolvido por Jurandy Santana</span>
         </div>
       </div>
 
@@ -81,7 +69,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <span className="brand-text">
               <span className="brand-title-row">
                 <strong>DFD Fácil</strong>
-                <span className="badge-api">API Gov.br</span>
               </span>
               <span className="hide-sm">Documento de Formalização da Demanda com Integração CATMAT</span>
             </span>
@@ -111,13 +98,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             {mounted && (
               <div className={`api-status ${apiOnline === false ? 'offline' : ''}`}>
                 <span className="api-dot" />
-                <span>{apiOnline === false ? 'API Offline' : apiOnline ? 'API Online' : 'Verificando…'}</span>
+                <span>{apiOnline === false ? 'Offline' : apiOnline ? 'Online' : 'Verificando…'}</span>
               </div>
             )}
             {mounted && email && (
               <div className="user-block hide-sm">
                 <div className="email">{email}</div>
-                <div className="sub">Preços via servidor · base CATMAT local</div>
+                <div className="sub">Lista pessoal · base CATMAT</div>
               </div>
             )}
             <button className="btn ghost" onClick={logout} aria-label="Sair" type="button">

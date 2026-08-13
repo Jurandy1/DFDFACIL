@@ -38,18 +38,8 @@ export default function LoginPage() {
     <div className="login-page">
       <div className="gov-bar">
         <div className="gov-bar-left">
-          <span className="brasil">BRASIL</span>
-          <span className="sep">|</span>
-          <span className="hide-sm">Ministério da Gestão e da Inovação em Serviços Públicos</span>
-          <span className="show-sm-only">MGI</span>
+          <span className="dev-credit">Desenvolvido por Jurandy Santana</span>
         </div>
-        <a
-          href="https://dadosabertos.compras.gov.br/swagger-ui/index.html"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          API Compras.gov.br
-        </a>
       </div>
 
       <main className="login-main">
@@ -60,14 +50,13 @@ export default function LoginPage() {
               <span className="brand-text">
                 <span className="brand-title-row">
                   <strong>DFD Fácil</strong>
-                  <span className="badge-api">API Gov.br</span>
                 </span>
-                <span>CATMAT & Gestão de Demandas — identidade Gov.br</span>
+                <span>CATMAT & Gestão de Demandas</span>
               </span>
             </div>
 
             <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
-              Entre para montar sua lista de demanda com busca CATMAT e preços de referência Compras.gov.br.
+              Entre para montar sua lista de demanda com busca CATMAT e preços de referência.
             </p>
 
             <label className="field">

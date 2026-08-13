@@ -397,9 +397,9 @@ export default function PesquisaPage() {
         <div className="hero-top">
           <div>
             <h2>Catálogo de Material (CATMAT / PDM)</h2>
-            <p>Consulte itens homologados pelo Governo Federal para instrução do seu DFD.</p>
+            <p>Consulte itens do catálogo CATMAT para instrução do seu DFD.</p>
           </div>
-          <span className="hero-badge">dadosabertos.compras.gov.br</span>
+          <span className="hero-badge">Base CATMAT</span>
         </div>
         <div className="hero-search">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ marginLeft: 8, flexShrink: 0 }} aria-hidden>
@@ -622,7 +622,7 @@ export default function PesquisaPage() {
                     <div className="stack-sm">
                       <div className="skel" />
                       <div className="skel" style={{ height: 20, width: '60%' }} />
-                      <span className="chip">Consultando preços Compras.gov.br…</span>
+                      <span className="chip">Consultando preços de referência…</span>
                     </div>
                   )}
 

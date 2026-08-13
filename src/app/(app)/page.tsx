@@ -94,7 +94,7 @@ export default function ListaPage() {
             </span>
           </div>
           <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
-            Documento de Formalização da Demanda — exportação CSV no padrão Compras.gov.br
+            Documento de Formalização da Demanda — exportação CSV para sua lista
           </p>
         </div>
         <Link href="/pesquisa" className="btn primary">
@@ -144,7 +144,7 @@ export default function ListaPage() {
           <div className="panel-hd">
             <div className="title">
               <strong>Identificação do rascunho do DFD</strong>
-              <small>Campos usados na exportação CSV (padrão Gov.br)</small>
+              <small>Campos usados na exportação CSV da lista</small>
             </div>
           </div>
           <div className="panel-bd">
