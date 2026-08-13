@@ -11,6 +11,7 @@
     "db:schema": "node scripts/apply-schema.cjs",
     "db:check-sql": "node scripts/check-supabase-sql.cjs",
     "db:atributos": "node scripts/apply-atributos.cjs",
+    "db:unidade": "node scripts/apply-unidade.cjs",
     "db:backfill-atributos": "node scripts/backfill-atributos.cjs",
     "sync": "node scripts/sync-material.cjs",
     "sync:itens": "node scripts/sync-material.cjs --only=itens"

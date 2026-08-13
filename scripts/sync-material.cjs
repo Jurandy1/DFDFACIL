@@ -329,7 +329,8 @@ async function upsertItens(client, rows) {
   const params = []
   let i = 1
   for (const r of rows) {
-    const parsed = extrairAtributos(r.descricao_completa)
+    const parsed = extrairAtributos(r.descricao_completa, r.unidade_medida)
+    const unidadeFinal = parsed.unidade_normalizada || r.unidade_medida || null
     values.push(
       `($${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},now(),$${i++}::jsonb,$${i++},$${i++},$${i++})`
     )
@@ -343,7 +344,7 @@ async function upsertItens(client, rows) {
       r.nome_grupo,
       r.nome_item,
       r.descricao_completa,
-      r.unidade_medida,
+      unidadeFinal,
       r.status_item,
       r.item_sustentavel,
       r.codigo_ncm,
@@ -487,7 +488,12 @@ async function main() {
           nome_grupo: x.nomeGrupo,
           nome_item: nome,
           descricao_completa: `${x.codigoItem} - ${desc}`,
-          unidade_medida: null,
+          unidade_medida:
+            x.unidadeMedida ||
+            x.nomeUnidadeMedida ||
+            x.siglaUnidadeMedida ||
+            x.unidadeFornecimento ||
+            null,
           status_item: !!x.statusItem,
           item_sustentavel: !!x.itemSustentavel,
           codigo_ncm: x.codigo_ncm || null,

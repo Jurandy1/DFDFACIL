@@ -71,13 +71,14 @@ export default function PesquisaPage() {
       p_tem_forno: intent.tem_forno,
       p_capacidade_btu: intent.capacidade_btu,
       p_qtd_bocas: intent.qtd_bocas,
+      p_unidade: intent.unidade,
     }
   }
 
   function buildFilterFromFacets(next: Record<string, string>) {
     // Texto residual só para chaves ainda textuais (TIPO/MODELO/TENSÃO/CARACTERÍSTICAS)
     return Object.entries(next)
-      .filter(([k]) => !['FORNO', 'CAPACIDADE', 'BOCAS'].includes(k))
+      .filter(([k]) => !['FORNO', 'CAPACIDADE', 'BOCAS', 'UNIDADE DE MEDIDA'].includes(k))
       .map(([, v]) => v.replace(/\./g, '').trim())
       .filter(Boolean)
       .join(' ')
@@ -171,18 +172,28 @@ export default function PesquisaPage() {
 
     let items = await tryOnce(intent)
     // Relaxa filtros tipados se AND ficou vazio (ex.: 4 bocas + forno sem interseção)
+    if (!items.length && intent.unidade != null) {
+      items = await tryOnce({ ...intent, unidade: null })
+    }
     if (!items.length && intent.qtd_bocas != null) {
       items = await tryOnce({ ...intent, qtd_bocas: null })
     }
     if (!items.length && intent.capacidade_btu != null) {
       items = await tryOnce({ ...intent, capacidade_btu: null, qtd_bocas: intent.qtd_bocas })
     }
-    if (!items.length && (intent.tem_forno != null || intent.qtd_bocas != null || intent.capacidade_btu != null)) {
+    if (
+      !items.length &&
+      (intent.tem_forno != null ||
+        intent.qtd_bocas != null ||
+        intent.capacidade_btu != null ||
+        intent.unidade != null)
+    ) {
       items = await tryOnce({
         termoLimpo: intent.termoLimpo,
         tem_forno: null,
         capacidade_btu: null,
         qtd_bocas: null,
+        unidade: null,
       })
     }
     return items
@@ -215,6 +226,7 @@ export default function PesquisaPage() {
     if (intent.tem_forno === false) nextFacets.FORNO = 'SEM FORNO'
     if (intent.capacidade_btu) nextFacets.CAPACIDADE = `${intent.capacidade_btu} BTU`
     if (intent.qtd_bocas) nextFacets.BOCAS = `${intent.qtd_bocas} BOCAS`
+    if (intent.unidade) nextFacets['UNIDADE DE MEDIDA'] = intent.unidade
     setFacetActive(nextFacets)
 
     const hintText = intent.termoLimpo
@@ -537,7 +549,7 @@ export default function PesquisaPage() {
                       Atributos especificados
                       <span className="muted" style={{ fontWeight: 400, textTransform: 'none', marginLeft: 6 }}>· extração automática</span>
                     </div>
-                    {(['TIPO', 'MODELO', 'CAPACIDADE', 'TENSÃO', 'FORNO', 'BOCAS', 'CARACTERÍSTICAS'] as const).map((chave) => {
+                    {(['TIPO', 'MODELO', 'CAPACIDADE', 'TENSÃO', 'UNIDADE DE MEDIDA', 'FORNO', 'BOCAS', 'CARACTERÍSTICAS'] as const).map((chave) => {
                       const opts = facetas.filter((f) => f.chave === chave)
                       if (!opts.length) return null
                       return (

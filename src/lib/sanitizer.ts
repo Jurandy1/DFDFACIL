@@ -9,6 +9,28 @@ export type SearchIntent = {
   tem_forno: boolean | null
   capacidade_btu: number | null
   qtd_bocas: number | null
+  /** Ex.: PACOTE, CAIXA, UNIDADE, METRO, ROLO */
+  unidade: string | null
+}
+
+const UNIDADE_WORDS: Record<string, string> = {
+  unidade: 'UNIDADE',
+  und: 'UNIDADE',
+  un: 'UNIDADE',
+  pacote: 'PACOTE',
+  pct: 'PACOTE',
+  caixa: 'CAIXA',
+  cx: 'CAIXA',
+  metro: 'METRO',
+  metros: 'METRO',
+  rolo: 'ROLO',
+  rema: 'REMA',
+  resma: 'REMA',
+  fardo: 'FARDO',
+  litro: 'LITRO',
+  quilo: 'QUILOGRAMA',
+  quilograma: 'QUILOGRAMA',
+  kg: 'QUILOGRAMA',
 }
 
 function stripAccents(s: string) {
@@ -73,6 +95,15 @@ export function parseSearchIntent(query: string): SearchIntent {
     q = q.replace(/\d+\s*bocas\b/g, ' ')
   }
 
+  let unidade: string | null = null
+  const undMatch = q.match(
+    /\b(pacote|pct|caixa|cx|metro|metros|rolo|rema|resma|fardo|unidade|und|litro|quilograma|kg)\b/
+  )
+  if (undMatch) {
+    unidade = UNIDADE_WORDS[undMatch[1]] || null
+    if (unidade) q = q.replace(new RegExp(`\\b${undMatch[1]}\\b`, 'g'), ' ')
+  }
+
   q = q.replace(/\b(com|sem)\b/g, ' ').trim().replace(/\s+/g, ' ')
 
   return {
@@ -80,6 +111,7 @@ export function parseSearchIntent(query: string): SearchIntent {
     tem_forno,
     capacidade_btu: Number.isFinite(capacidade_btu as number) ? capacidade_btu : null,
     qtd_bocas: Number.isFinite(qtd_bocas as number) ? qtd_bocas : null,
+    unidade,
   }
 }
 
@@ -88,10 +120,12 @@ export function filtersFromFacets(facets: Record<string, string>): {
   tem_forno: boolean | null
   capacidade_btu: number | null
   qtd_bocas: number | null
+  unidade: string | null
 } {
   let tem_forno: boolean | null = null
   let capacidade_btu: number | null = null
   let qtd_bocas: number | null = null
+  let unidade: string | null = null
 
   const forno = facets.FORNO
   if (forno === 'COM FORNO') tem_forno = true
@@ -109,7 +143,10 @@ export function filtersFromFacets(facets: Record<string, string>): {
     if (Number.isFinite(n) && n > 0) qtd_bocas = n
   }
 
-  return { tem_forno, capacidade_btu, qtd_bocas }
+  const und = facets['UNIDADE DE MEDIDA']
+  if (und) unidade = und.trim().toUpperCase()
+
+  return { tem_forno, capacidade_btu, qtd_bocas, unidade }
 }
 
 /** Merge intent + facetas (faceta tem prioridade) */
@@ -123,5 +160,6 @@ export function mergeFilters(
     tem_forno: fromFacet.tem_forno ?? intent.tem_forno,
     capacidade_btu: fromFacet.capacidade_btu ?? intent.capacidade_btu,
     qtd_bocas: fromFacet.qtd_bocas ?? intent.qtd_bocas,
+    unidade: fromFacet.unidade ?? intent.unidade,
   }
 }
