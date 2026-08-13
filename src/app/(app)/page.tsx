@@ -196,7 +196,7 @@ export default function ListaPage() {
               <thead>
                 <tr>
                   <th style={{ width: 60 }}>#</th>
-                  <th>Item &amp; especificação CATMAT</th>
+                  <th>Item & especificação CATMAT</th>
                   <th style={{ width: 90 }}>Unidade</th>
                   <th style={{ width: 100 }}>Qtd</th>
                   <th style={{ width: 130 }}>R$ un. ref.</th>

@@ -62,7 +62,7 @@ export default function LoginPage() {
                   <strong>DFD Fácil</strong>
                   <span className="badge-api">API Gov.br</span>
                 </span>
-                <span>CATMAT &amp; Gestão de Demandas — identidade Gov.br</span>
+                <span>CATMAT & Gestão de Demandas — identidade Gov.br</span>
               </span>
             </div>
 

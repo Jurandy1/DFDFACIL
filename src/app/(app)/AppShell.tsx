@@ -12,6 +12,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState<string | null>(null)
   const [count, setCount] = useState<number | null>(null)
   const [apiOnline, setApiOnline] = useState<boolean | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -110,16 +115,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </svg>
               <span className="hide-sm">Minha Lista DFD</span>
               <span className="show-sm-only">Lista</span>
-              {count != null && count > 0 && <span className="nav-badge">{count}</span>}
+              {mounted && count != null && count > 0 && <span className="nav-badge">{count}</span>}
             </Link>
           </nav>
 
           <div className="header-right">
-            <div className={`api-status ${apiOnline === false ? 'offline' : ''}`}>
-              <span className="api-dot" />
-              <span>{apiOnline === false ? 'API Offline' : apiOnline ? 'API Online' : 'Verificando…'}</span>
-            </div>
-            {email && (
+            {mounted && (
+              <div className={`api-status ${apiOnline === false ? 'offline' : ''}`}>
+                <span className="api-dot" />
+                <span>{apiOnline === false ? 'API Offline' : apiOnline ? 'API Online' : 'Verificando…'}</span>
+              </div>
+            )}
+            {mounted && email && (
               <div className="user-block hide-sm">
                 <div className="email">{email}</div>
                 <div className="sub">Base local + Compras.gov.br</div>
