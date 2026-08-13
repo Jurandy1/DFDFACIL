@@ -2,5 +2,13 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "functions": {
+    "src/app/api/precos/route.ts": {
+      "maxDuration": 10
+    },
+    "src/app/api/compras-status/route.ts": {
+      "maxDuration": 10
+    }
+  }
 }

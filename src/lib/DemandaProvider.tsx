@@ -1,6 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { DemandaItem } from '@/lib/types'
 
@@ -11,7 +19,21 @@ export type Demanda = {
   observacao: string | null
 }
 
-export function useDemanda() {
+type DemandaContextValue = {
+  supabase: ReturnType<typeof createClient>
+  demanda: Demanda | null
+  setDemanda: React.Dispatch<React.SetStateAction<Demanda | null>>
+  itens: DemandaItem[]
+  setItens: React.Dispatch<React.SetStateAction<DemandaItem[]>>
+  loading: boolean
+  status: string
+  setStatus: React.Dispatch<React.SetStateAction<string>>
+  reload: () => Promise<void>
+}
+
+const DemandaContext = createContext<DemandaContextValue | null>(null)
+
+export function DemandaProvider({ children }: { children: ReactNode }) {
   const supabase = useMemo(() => createClient(), [])
   const [demanda, setDemanda] = useState<Demanda | null>(null)
   const [itens, setItens] = useState<DemandaItem[]>([])
@@ -58,5 +80,26 @@ export function useDemanda() {
     void load()
   }, [load])
 
-  return { supabase, demanda, setDemanda, itens, setItens, loading, status, setStatus, reload: load }
+  const value = useMemo(
+    () => ({
+      supabase,
+      demanda,
+      setDemanda,
+      itens,
+      setItens,
+      loading,
+      status,
+      setStatus,
+      reload: load,
+    }),
+    [supabase, demanda, itens, loading, status, load]
+  )
+
+  return <DemandaContext.Provider value={value}>{children}</DemandaContext.Provider>
+}
+
+export function useDemanda() {
+  const ctx = useContext(DemandaContext)
+  if (!ctx) throw new Error('useDemanda must be used within DemandaProvider')
+  return ctx
 }

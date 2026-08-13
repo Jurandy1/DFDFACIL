@@ -1,5 +1,5 @@
-import AppShell from './AppShell'
+import AppShellClient from './AppShellClient'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return <AppShell>{children}</AppShell>
+  return <AppShellClient>{children}</AppShellClient>
 }

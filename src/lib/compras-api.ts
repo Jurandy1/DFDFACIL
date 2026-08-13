@@ -5,8 +5,12 @@
 
 export const COMPRAS_BASE = 'https://dadosabertos.compras.gov.br'
 
-const PAGE_SIZE = 500
-const MAX_PAGES = 3
+const FULL_PAGE_SIZE = 200
+const FULL_MAX_PAGES = 2
+const FAST_PAGE_SIZE = 50
+const FAST_MAX_PAGES = 1
+
+export type FetchMode = 'fast' | 'full'
 
 export type Paginated<T> = {
   resultado?: T[]
@@ -47,6 +51,13 @@ export type PncpItemRow = {
   descricaoResumida?: string
 }
 
+export type PncpPrecoRow = PncpItemRow & {
+  preco: number
+  data: string | null
+  orgao: string | null
+  uf: string | null
+}
+
 export type UnidadeFornecimentoRow = {
   codigoPdm?: number
   siglaUnidadeFornecimento?: string
@@ -75,11 +86,21 @@ export function last12MonthsRange(): { inicio: string; fim: string } {
   return { inicio: fmtDateISO(ini), fim: fmtDateISO(fim) }
 }
 
-async function fetchComprasJson<T>(url: string): Promise<{ ok: true; data: T } | { ok: false; status: number; message: string }> {
+function pageConfig(mode: FetchMode) {
+  return mode === 'fast'
+    ? { pageSize: FAST_PAGE_SIZE, maxPages: FAST_MAX_PAGES, siasgMs: 7_000, pncpMs: 0 }
+    : { pageSize: FULL_PAGE_SIZE, maxPages: FULL_MAX_PAGES, siasgMs: 25_000, pncpMs: 60_000 }
+}
+
+async function fetchComprasJson<T>(
+  url: string,
+  signal?: AbortSignal
+): Promise<{ ok: true; data: T } | { ok: false; status: number; message: string }> {
   try {
     const res = await fetch(url, {
       headers: { accept: 'application/json' },
-      next: { revalidate: 0 },
+      cache: 'no-store',
+      signal,
     })
     if (!res.ok) {
       const text = await res.text()
@@ -88,6 +109,9 @@ async function fetchComprasJson<T>(url: string): Promise<{ ok: true; data: T } |
     const data = (await res.json()) as T
     return { ok: true, data }
   } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      return { ok: false, status: 0, message: 'abort' }
+    }
     const message = e instanceof Error ? e.message : 'fetch failed'
     return { ok: false, status: 0, message }
   }
@@ -103,14 +127,16 @@ function buildUrl(path: string, params: Record<string, string | number | undefin
 
 async function fetchAllPages<T>(
   buildPageUrl: (pagina: number) => string,
-  maxPages = MAX_PAGES
+  maxPages: number,
+  signal?: AbortSignal
 ): Promise<{ rows: T[]; error?: string }> {
   const rows: T[] = []
   let pagina = 1
   let totalPaginas = 1
 
   while (pagina <= totalPaginas && pagina <= maxPages) {
-    const result = await fetchComprasJson<Paginated<T>>(buildPageUrl(pagina))
+    if (signal?.aborted) return { rows, error: 'abort' }
+    const result = await fetchComprasJson<Paginated<T>>(buildPageUrl(pagina), signal)
     if (!result.ok) {
       return { rows, error: result.message || `HTTP ${result.status}` }
     }
@@ -122,6 +148,15 @@ async function fetchAllPages<T>(
   }
 
   return { rows }
+}
+
+function withAbortTimeout(ms: number): { signal: AbortSignal; clear: () => void } {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ms)
+  return {
+    signal: ctrl.signal,
+    clear: () => clearTimeout(timer),
+  }
 }
 
 export function siasgRowKey(row: SiasgPrecoRow): string {
@@ -136,46 +171,8 @@ export function pncpRowKey(row: PncpItemRow): string {
   return row.idCompraItem || row.idCompra || 'pncp-unknown'
 }
 
-export async function fetchSiasgPrecos(codigoItem: number): Promise<{
-  rows: SiasgPrecoRow[]
-  error?: string
-  truncated?: boolean
-}> {
-  const { inicio, fim } = last12MonthsRange()
-
-  const { rows, error } = await fetchAllPages<SiasgPrecoRow>((pagina) =>
-    buildUrl('/modulo-pesquisa-preco/1_consultarMaterial', {
-      tipo: 'codigoItemCatalogo',
-      codigo: codigoItem,
-      pagina,
-      tamanhoPagina: PAGE_SIZE,
-      dataCompraInicio: inicio,
-      dataCompraFim: fim,
-    })
-  )
-
-  const truncated = rows.length >= PAGE_SIZE * MAX_PAGES
-  return { rows, error, truncated }
-}
-
-export async function fetchPncpPrecos(codigoItem: number): Promise<{
-  rows: Array<PncpItemRow & { preco: number; data: string | null; orgao: string | null; uf: string | null }>
-  error?: string
-}> {
-  const { inicio, fim } = last12MonthsRange()
-
-  const { rows, error } = await fetchAllPages<PncpItemRow>((pagina) =>
-    buildUrl('/modulo-contratacoes/2_consultarItensContratacoes_PNCP_14133', {
-      codItemCatalogo: codigoItem,
-      materialOuServico: 'M',
-      pagina,
-      tamanhoPagina: PAGE_SIZE,
-      dataInclusaoPncpInicial: inicio,
-      dataInclusaoPncpFinal: fim,
-    })
-  )
-
-  const mapped = rows
+function mapPncpRows(rows: PncpItemRow[]): PncpPrecoRow[] {
+  return rows
     .map((row) => {
       const preco = Number(row.valorUnitarioResultado || row.valorUnitarioEstimado || 0)
       if (!preco || preco <= 0) return null
@@ -191,11 +188,75 @@ export async function fetchPncpPrecos(codigoItem: number): Promise<{
         uf: (row as { unidadeOrgaoUfSigla?: string }).unidadeOrgaoUfSigla ?? null,
       }
     })
-    .filter(Boolean) as Array<
-    PncpItemRow & { preco: number; data: string | null; orgao: string | null; uf: string | null }
-  >
+    .filter(Boolean) as PncpPrecoRow[]
+}
 
-  return { rows: mapped, error }
+export async function fetchSiasgPrecos(
+  codigoItem: number,
+  mode: FetchMode = 'full'
+): Promise<{ rows: SiasgPrecoRow[]; error?: string; truncated?: boolean }> {
+  const { inicio, fim } = last12MonthsRange()
+  const cfg = pageConfig(mode)
+  const { signal, clear } = withAbortTimeout(cfg.siasgMs)
+
+  try {
+    const { rows, error } = await fetchAllPages<SiasgPrecoRow>(
+      (pagina) =>
+        buildUrl('/modulo-pesquisa-preco/1_consultarMaterial', {
+          tipo: 'codigoItemCatalogo',
+          codigo: codigoItem,
+          pagina,
+          tamanhoPagina: cfg.pageSize,
+          dataCompraInicio: inicio,
+          dataCompraFim: fim,
+        }),
+      cfg.maxPages,
+      signal
+    )
+    const truncated = rows.length >= cfg.pageSize * cfg.maxPages
+    return { rows, error: error === 'abort' ? 'SIASG timeout' : error, truncated }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'SIASG indisponível'
+    return { rows: [], error: message }
+  } finally {
+    clear()
+  }
+}
+
+export async function fetchPncpPrecos(
+  codigoItem: number,
+  mode: FetchMode = 'full'
+): Promise<{ rows: PncpPrecoRow[]; error?: string }> {
+  if (mode === 'fast') return { rows: [] }
+
+  const { inicio, fim } = last12MonthsRange()
+  const cfg = pageConfig(mode)
+  const { signal, clear } = withAbortTimeout(cfg.pncpMs)
+
+  try {
+    const { rows, error } = await fetchAllPages<PncpItemRow>(
+      (pagina) =>
+        buildUrl('/modulo-contratacoes/2_consultarItensContratacoes_PNCP_14133', {
+          codItemCatalogo: codigoItem,
+          materialOuServico: 'M',
+          pagina,
+          tamanhoPagina: cfg.pageSize,
+          dataInclusaoPncpInicial: inicio,
+          dataInclusaoPncpFinal: fim,
+        }),
+      cfg.maxPages,
+      signal
+    )
+    return {
+      rows: mapPncpRows(rows),
+      error: error === 'abort' ? 'PNCP timeout' : error,
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'PNCP indisponível'
+    return { rows: [], error: message }
+  } finally {
+    clear()
+  }
 }
 
 export async function fetchUnidadeFornecimentoPdm(codigoPdm: number): Promise<UnidadeFornecimentoRow | null> {

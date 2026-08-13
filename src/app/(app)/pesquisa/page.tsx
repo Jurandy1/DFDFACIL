@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
-import { useDemanda } from '@/lib/useDemanda'
+import { useEffect, useRef, useState } from 'react'
+import { useDemanda } from '@/lib/DemandaProvider'
 import {
   formatBRL,
   precoFonteBadge,
@@ -51,8 +51,12 @@ export default function PesquisaPage() {
   const [recentPrecos, setRecentPrecos] = useState<RecentPrecoRow[]>([])
   const [enrichment, setEnrichment] = useState<ItemEnrichment | null>(null)
   const [priceLoading, setPriceLoading] = useState(false)
+  const [priceStale, setPriceStale] = useState(false)
   const [searching, setSearching] = useState(false)
   const [autoOpenedFor, setAutoOpenedFor] = useState('')
+
+  const priceFetchRef = useRef<{ id: number; ctrl: AbortController | null }>({ id: 0, ctrl: null })
+  const searchAbortRef = useRef<AbortController | null>(null)
 
   const filteredItemHits = itemHits
 
@@ -69,36 +73,43 @@ export default function PesquisaPage() {
       setFreeItems([])
       return
     }
+
     const q = termo.trim()
     const codePrefix = q.match(/^(\d{4,})\b/)?.[1] ?? null
 
-    const tPdm = setTimeout(async () => {
+    const timer = setTimeout(async () => {
+      searchAbortRef.current?.abort()
+      const ctrl = new AbortController()
+      searchAbortRef.current = ctrl
       setSearching(true)
-      if (codePrefix) {
-        const byCode = await supabase.rpc('buscar_itens_livre', { termo: q, lim: 5 })
-        if (!byCode.error) {
-          setFreeItems((byCode.data || []) as FreeItem[])
-          setPdms([])
-        }
-        setSearching(false)
-        return
-      }
 
-      const pdmRes = await supabase.rpc('buscar_pdms', { termo: q, lim: 18 })
-      if (pdmRes.error) setStatus(pdmRes.error.message)
-      else setPdms((pdmRes.data || []) as PdmHit[])
-      setSearching(false)
+      try {
+        if (codePrefix) {
+          const byCode = await supabase.rpc('buscar_itens_livre', { termo: q, lim: 8 })
+          if (ctrl.signal.aborted) return
+          if (!byCode.error) {
+            setFreeItems((byCode.data || []) as FreeItem[])
+            setPdms([])
+          }
+          return
+        }
+
+        const [pdmRes, itemRes] = await Promise.all([
+          supabase.rpc('buscar_pdms', { termo: q, lim: 18 }),
+          supabase.rpc('buscar_itens_livre', { termo: q, lim: 12 }),
+        ])
+        if (ctrl.signal.aborted) return
+        if (pdmRes.error) setStatus(pdmRes.error.message)
+        else setPdms((pdmRes.data || []) as PdmHit[])
+        if (!itemRes.error) setFreeItems((itemRes.data || []) as FreeItem[])
+      } finally {
+        if (!ctrl.signal.aborted) setSearching(false)
+      }
     }, 150)
 
-    const tItens = setTimeout(async () => {
-      if (codePrefix) return
-      const itemRes = await supabase.rpc('buscar_itens_livre', { termo: q, lim: 16 })
-      if (!itemRes.error) setFreeItems((itemRes.data || []) as FreeItem[])
-    }, 350)
-
     return () => {
-      clearTimeout(tPdm)
-      clearTimeout(tItens)
+      clearTimeout(timer)
+      searchAbortRef.current?.abort()
     }
   }, [termo, supabase, setStatus])
 
@@ -154,21 +165,27 @@ export default function PesquisaPage() {
     setItemFilter(hint)
     setItemHits([])
     setStatus(`Abrindo ${p.nome_pdm}…`)
-    const [{ data: items }, { data: unid }, { data: fac }] = await Promise.all([
+    const [{ data: items }, { data: unid }] = await Promise.all([
       supabase.rpc('buscar_itens_no_pdm', {
         pdm: p.codigo_pdm,
         termo: hint || null,
         lim: hint ? 100 : 80,
       }),
       supabase.rpc('sugerir_unidade', { p_codigo_pdm: p.codigo_pdm }),
-      supabase.rpc('facetas_pdm', { pdm: p.codigo_pdm, lim_por_chave: 14 }),
     ])
     setItemHits((items || []) as ItemHit[])
     setUnidadeSug((unid as string) || 'unidade')
-    setFacetas((fac || []) as Faceta[])
     setStatus(
       `${(items || []).length} opções em ${p.nome_pdm} — use Tipo / Modelo / Capacidade abaixo`
     )
+
+    window.setTimeout(async () => {
+      const { data: fac } = await supabase.rpc('facetas_pdm', {
+        pdm: p.codigo_pdm,
+        lim_por_chave: 14,
+      })
+      setFacetas((fac || []) as Faceta[])
+    }, 100)
   }
 
   function toggleFacet(chave: string, valor: string) {
@@ -181,33 +198,40 @@ export default function PesquisaPage() {
     })
   }
 
-  async function openItem(it: ItemHit) {
-    setItemSel(it)
-    setQtd(1)
-    setPreferred(null)
-    setRecentPrecos([])
-    setEnrichment(null)
-    setPreco(null)
-    setPrecoFonte(null)
-    setPriceLoading(true)
-    setStatus('Buscando preços…')
-    try {
-      const codigoPdm = it.codigo_pdm ?? pdmSel?.codigo_pdm
-      const qs = new URLSearchParams({ codigoItem: String(it.codigo_item) })
-      if (codigoPdm) qs.set('codigoPdm', String(codigoPdm))
+  async function loadPrecos(
+    codigoItem: number,
+    codigoPdm: number | undefined,
+    opts?: { refresh?: boolean }
+  ) {
+    priceFetchRef.current.ctrl?.abort()
+    const reqId = ++priceFetchRef.current.id
+    const ctrl = new AbortController()
+    priceFetchRef.current.ctrl = ctrl
 
-      const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), 45000)
-      const res = await fetch(`/api/precos?${qs.toString()}`, {
-        signal: ctrl.signal,
-      })
+    const qs = new URLSearchParams({ codigoItem: String(codigoItem) })
+    if (codigoPdm) qs.set('codigoPdm', String(codigoPdm))
+    if (opts?.refresh) qs.set('refresh', '1')
+
+    const timer = setTimeout(() => ctrl.abort(), 55_000)
+    try {
+      const res = await fetch(`/api/precos?${qs.toString()}`, { signal: ctrl.signal })
       clearTimeout(timer)
+      if (reqId !== priceFetchRef.current.id) return
+
+      const contentType = res.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        throw new Error('Sessão expirada — faça login novamente')
+      }
+
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Falha nos preços')
+
       const pref = json.preferred as PreferredPrice | null
       setPreferred(pref)
       setRecentPrecos((json.recent || []) as RecentPrecoRow[])
       setEnrichment((json.meta?.enrichment as ItemEnrichment) ?? null)
+      setPriceStale(Boolean(json.meta?.stale || json.meta?.refreshScheduled))
+
       if (pref) {
         setPreco(Number(pref.mediana))
         setPrecoFonte(pref.fonte)
@@ -217,21 +241,49 @@ export default function PesquisaPage() {
         setPrecoFonte(null)
         const hint = json.meta?.fetchError
           ? String(json.meta.fetchError)
-          : 'Sem preços encontrados — preencha manualmente'
+          : json.meta?.refreshScheduled
+            ? 'Consulta em andamento — tente Atualizar preço em instantes'
+            : 'Sem preços encontrados — preencha manualmente'
         setStatus(hint)
       }
       if (json.unidadeSugerida) setUnidadeSug(String(json.unidadeSugerida))
     } catch (e) {
-      const msg =
-        e instanceof Error && e.name === 'AbortError'
-          ? 'Consulta de preço demorou demais — preencha manualmente'
-          : e instanceof Error
-            ? e.message
-            : 'Erro ao buscar preços'
+      clearTimeout(timer)
+      if (reqId !== priceFetchRef.current.id) return
+
+      if (e instanceof Error && e.name === 'AbortError') {
+        setStatus('Consulta interrompida — clique em Atualizar preço')
+        return
+      }
+
+      const msg = e instanceof Error ? e.message : 'Erro ao buscar preços'
       setStatus(msg)
     } finally {
-      setPriceLoading(false)
+      if (reqId === priceFetchRef.current.id) setPriceLoading(false)
     }
+  }
+
+  async function openItem(it: ItemHit) {
+    setItemSel(it)
+    setQtd(1)
+    setPreferred(null)
+    setRecentPrecos([])
+    setEnrichment(null)
+    setPreco(null)
+    setPrecoFonte(null)
+    setPriceStale(false)
+    setPriceLoading(true)
+    setStatus('Buscando preços…')
+    await loadPrecos(it.codigo_item, it.codigo_pdm ?? pdmSel?.codigo_pdm)
+  }
+
+  async function refreshPrecos() {
+    if (!itemSel) return
+    setPriceLoading(true)
+    setStatus('Atualizando preços…')
+    await loadPrecos(itemSel.codigo_item, itemSel.codigo_pdm ?? pdmSel?.codigo_pdm, {
+      refresh: true,
+    })
   }
 
   async function addItem() {
@@ -495,6 +547,18 @@ export default function PesquisaPage() {
                     {catmatAttributeTags(itemSel.descricao).map((t) => (
                       <span key={t} className="chip muted">{t}</span>
                     ))}
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
+                    {priceLoading && <span className="chip">Consultando preços…</span>}
+                    {!priceLoading && priceStale && (
+                      <span className="chip warn">Referência desatualizada — atualizando em background</span>
+                    )}
+                    {!priceLoading && (
+                      <button type="button" className="btn ghost" onClick={refreshPrecos} disabled={priceLoading}>
+                        Atualizar preço
+                      </button>
+                    )}
                   </div>
 
                   {priceLoading && (

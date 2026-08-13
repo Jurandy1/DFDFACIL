@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo } from 'react'
-import { useDemanda } from '@/lib/useDemanda'
+import { useDemanda } from '@/lib/DemandaProvider'
 import { buildCsv, formatBRL, precoFonteBadge, type DemandaItem } from '@/lib/types'
 
 export default function ListaPage() {
